@@ -1,0 +1,21 @@
+{
+	"folders": [
+		{
+			"name": "Blink",
+			"path": "../../Blink"
+		},
+		{
+			"name": "Blink_Sem_Delay",
+			"path": "../../Blink_Sem_Delay"
+		},
+		{
+			"name": "Carga_Blink",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"stdio.h": "c"
+		}
+	}
+}
