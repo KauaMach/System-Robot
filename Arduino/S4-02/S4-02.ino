@@ -60,10 +60,9 @@ void loop() {
   brilhoLedPot();
   ledBotao();
   blink();
-  carga();
-  processarEntradaSerial();
 
-  delay(42);
+  processarEntradaSerial();
+  
 }
 
 //------------------------
