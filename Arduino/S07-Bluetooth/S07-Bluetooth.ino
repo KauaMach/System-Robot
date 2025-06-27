@@ -1,6 +1,9 @@
 #include <esp_timer.h>
-#include "esp_system.h"   //funções básicas do sistema ESP
-#include "rom/ets_sys.h"  //funções do sistema de tempo real do ESP
+#include "esp_system.h"
+#include "rom/ets_sys.h"
+#include "BluetoothSerial.h"  // Biblioteca Bluetooth Serial (SPP - Serial Port Profile)
+
+BluetoothSerial SerialBT;
 
 // Definição de pinos
 #define ONBOARD_LED 2   // LED da placa
@@ -21,14 +24,10 @@ void IRAM_ATTR blinkISR() {
 // Função Botão
 volatile bool ledState = false;
 volatile uint64_t lastInterruptTime = 0;
-void IRAM_ATTR botaoISR() {
-  uint64_t now = esp_timer_get_time();  // tempo atual em micros
 
-  if (now - lastInterruptTime > 50000) {  // debounce 20ms (20000 micros)
-    ledState = !ledState;
-    digitalWrite(DIGITAL_LED, ledState);
-    lastInterruptTime = now;
-  }
+void IRAM_ATTR botaoISR() {
+  bool botaoPressionado = digitalRead(BUTTON_PIN) == LOW;
+  digitalWrite(DIGITAL_LED, botaoPressionado ? LOW : HIGH);
 }
 
 //------------------------
@@ -54,12 +53,15 @@ String entradaSerial = "";
 //Definição de funções
 void sobrecarregar(int carga);
 void brilhoLedPot();
-void processarEntradaSerial();
+void processarEntradaBT();
 void tratarMenu(String comando);
 void log(String msg);
 
 void setup() {
   Serial.begin(115200);
+  SerialBT.begin("ESP-BT");
+  delay(1000);
+  Serial.println("Bluetooth iniciado com nome: ESP-BT");
 
   pinMode(ONBOARD_LED, OUTPUT);
   pinMode(DIGITAL_LED, OUTPUT);
@@ -69,12 +71,11 @@ void setup() {
   // Blink com timer
   timerBlink = timerBegin(0, 80, true);  // 80MHz / 80 = 1MHz → 1 tick = 1 microsegundo
   timerAttachInterrupt(timerBlink, &blinkISR, true);
-  timerAlarmWrite(timerBlink, 500000, true);  //alarme para 500.000 us = 500 ms
+  timerAlarmWrite(timerBlink, 50000, true);  //alarme para 500.000 us = 500 ms
   timerAlarmEnable(timerBlink);
 
   // Interrupção do botão
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), botaoISR, CHANGE);
-
   // Configura Watchdog
   timerWatchdog = timerBegin(1, 80, true);  // 80 prescaler → 1 tick = 1 us
   timerAttachInterrupt(timerWatchdog, &resetModule, true);
@@ -87,7 +88,7 @@ void loop() {
 
   timerWrite(timerWatchdog, 0);  // Alimenta o watchdog (reseta o timer)
   brilhoLedPot();                // PWM com potenciômetro
-  processarEntradaSerial();      // Menu interativo
+  processarEntradaBT();          // Menu interativo
   sobrecarregar(quantidade);     // Função de carga
   delay(20);
 }
@@ -98,22 +99,11 @@ void sobrecarregar(int carga) {
   volatile unsigned long i = 0;
   while (i < carga) {
     i++;
-    Serial.print(".");
+    log(".");
     yield();
   }
 }
 
-// void sobrecarregarCPU() {
-//   // Loop infinito de cálculo sem delay - alta carga na CPU
-//   volatile unsigned long i = 0;
-//   while (true) {
-//     i++;
-//     if (i % 1000000 == 0) {
-//       Serial.println("Processando");
-//       Serial.println(i);
-//     }
-//   }
-// }
 
 //------------------------
 // Função: Leitura analógica e controle PWM
@@ -131,9 +121,9 @@ void brilhoLedPot() {
 
 //------------------------
 // Função: Processa a chamada do menu  via Serial
-void processarEntradaSerial() {
-  if (Serial.available()) {
-    char c = Serial.read();
+void processarEntradaBT() {
+  if (SerialBT.available()) {
+    char c = SerialBT.read();
     if (c == '\n') {
       entradaSerial.trim();
       if (!menuAtivo && entradaSerial.equalsIgnoreCase("MENU")) {
@@ -170,28 +160,28 @@ void tratarMenu(String comando) {
     case 1:
       if (comando == "1") {
         digitalWrite(DIGITAL_LED, HIGH);
-        Serial.println("LED Digital LIGADO");
+        Serial.println("\nLED Digital LIGADO");
         menuAtivo = false;
       } else if (comando == "2") {
         digitalWrite(DIGITAL_LED, LOW);
-        Serial.println("LED Digital DESLIGADO");
+        Serial.println("\nLED Digital DESLIGADO");
         menuAtivo = false;
       } else if (comando == "3") {
-        Serial.println("Digite o valor do brilho (0-255): ");
+        Serial.println("\nDigite o valor do brilho (0-255): ");
         estadoMenu = 2;
       } else if (comando == "4") {
-        Serial.println("Digite a quantidade para a função carga: ");
+        Serial.println("\nDigite a quantidade para a função carga: ");
         estadoMenu = 3;
       } else if (comando == "5") {
         statusLog = true;
-        Serial.println("Log ATIVADO");
+        Serial.println("\nLog ATIVADO");
         menuAtivo = false;
       } else if (comando == "6") {
         statusLog = false;
-        Serial.println("Log DESATIVADO");
+        Serial.println("\nLog DESATIVADO");
         menuAtivo = false;
       } else {
-        Serial.println("Opção inválida. Tente novamente.");
+        Serial.println("\nOpção inválida. Tente novamente.");
         estadoMenu = 0;
       }
       break;
@@ -199,7 +189,7 @@ void tratarMenu(String comando) {
     case 2:  // PWM
       brilhoPWM = constrain(comando.toInt(), 0, 255);
       analogWrite(PWM_LED, brilhoPWM);
-      Serial.print("Brilho PWM ajustado para: ");
+      Serial.print("\nBrilho PWM ajustado para: ");
       Serial.println(brilhoPWM);
       menuAtivo = false;
       break;
@@ -209,10 +199,10 @@ void tratarMenu(String comando) {
         int qnt = comando.toInt();
         if (qnt > 0) {
           quantidade = qnt;
-          Serial.print("Quantidade da função carga ajustada para: ");
+          Serial.print("\nQuantidade da função carga ajustada para: ");
           Serial.println(quantidade);
         } else {
-          Serial.println("Valor inválido.");
+          Serial.println("\nValor inválido.");
         }
         menuAtivo = false;
       }

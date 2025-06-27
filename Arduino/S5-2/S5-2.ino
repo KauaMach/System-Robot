@@ -21,14 +21,10 @@ void IRAM_ATTR blinkISR() {
 // Função Botão
 volatile bool ledState = false;
 volatile uint64_t lastInterruptTime = 0;
-void IRAM_ATTR botaoISR() {
-  uint64_t now = esp_timer_get_time();  // tempo atual em micros
 
-  if (now - lastInterruptTime > 50000) {  // debounce 20ms (20000 micros)
-    ledState = !ledState;
-    digitalWrite(DIGITAL_LED, ledState);
-    lastInterruptTime = now;
-  }
+void IRAM_ATTR botaoISR() {
+  bool botaoPressionado = digitalRead(BUTTON_PIN) == LOW;
+  digitalWrite(DIGITAL_LED, botaoPressionado ? LOW : HIGH);
 }
 
 //------------------------
@@ -60,6 +56,8 @@ void log(String msg);
 
 void setup() {
   Serial.begin(115200);
+  delay(1000);  
+  Serial.println("Iniciado");
 
   pinMode(ONBOARD_LED, OUTPUT);
   pinMode(DIGITAL_LED, OUTPUT);
@@ -69,12 +67,11 @@ void setup() {
   // Blink com timer
   timerBlink = timerBegin(0, 80, true);  // 80MHz / 80 = 1MHz → 1 tick = 1 microsegundo
   timerAttachInterrupt(timerBlink, &blinkISR, true);
-  timerAlarmWrite(timerBlink, 500000, true);  //alarme para 500.000 us = 500 ms
+  timerAlarmWrite(timerBlink, 50000, true);  //alarme para 500.000 us = 500 ms
   timerAlarmEnable(timerBlink);
 
   // Interrupção do botão
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), botaoISR, CHANGE);
-
   // Configura Watchdog
   timerWatchdog = timerBegin(1, 80, true);  // 80 prescaler → 1 tick = 1 us
   timerAttachInterrupt(timerWatchdog, &resetModule, true);
@@ -98,22 +95,11 @@ void sobrecarregar(int carga) {
   volatile unsigned long i = 0;
   while (i < carga) {
     i++;
-    Serial.print(".");
+    log(".");
     yield();
   }
 }
 
-// void sobrecarregarCPU() {
-//   // Loop infinito de cálculo sem delay - alta carga na CPU
-//   volatile unsigned long i = 0;
-//   while (true) {
-//     i++;
-//     if (i % 1000000 == 0) {
-//       Serial.println("Processando");
-//       Serial.println(i);
-//     }
-//   }
-// }
 
 //------------------------
 // Função: Leitura analógica e controle PWM
